@@ -191,7 +191,7 @@ Panel {
 
           // -------- próximos eventos --------
           Text {
-            text: "⚽ Upcoming events"
+            text: "⚽ Próximos eventos"
             color: root.foreground
             font.family: root.bar.fontFamily
             font.pixelSize: Style.font.body
@@ -221,14 +221,14 @@ Panel {
 
           Text {
             visible: root.events.filter(function(e){ return e.kind === "upcoming" }).length === 0
-            text: "No upcoming events"
+            text: "Sem eventos próximos"
             color: Qt.darker(root.foreground, 1.4)
             font.pixelSize: Style.font.body
           }
 
           // -------- resultados --------
           Text {
-            text: "🏁 Latest results"
+            text: "🏁 Últimos resultados"
             color: root.foreground
             font.letterSpacing: 1
             font.pixelSize: Style.font.body
@@ -255,11 +255,11 @@ Panel {
 
           Rectangle { height: 1; width: parent.width; color: Qt.alpha(root.foreground, 0.15) }
 
-          // -------- favorite teams --------
+          // -------- equipas preferidas --------
           Row {
             spacing: Style.space(8)
             Text {
-              text: "⭐ Favorite teams"
+              text: "⭐ Equipas preferidas"
               color: root.foreground
               font.letterSpacing: 1
               font.pixelSize: Style.font.body
@@ -303,7 +303,7 @@ Panel {
 
           Text {
             visible: root.teams.length === 0
-            text: "No teams configured — click + to add"
+            text: "Nenhuma equipa configurada — clica + para adicionar"
             color: Qt.darker(root.foreground, 1.4)
             font.pixelSize: Style.font.body
           }
@@ -354,7 +354,7 @@ Panel {
             Row {
               visible: root.newTeamProvider !== "f1"
               spacing: Style.space(6)
-              Text { text: "Name:"; color: root.foreground; font.pixelSize: Style.font.caption; anchors.verticalCenter: parent.verticalCenter }
+              Text { text: "Nome:"; color: root.foreground; font.pixelSize: Style.font.caption; anchors.verticalCenter: parent.verticalCenter }
               Rectangle {
                 width: Style.space(180); height: Style.space(22)
                 color: Qt.alpha(root.foreground, 0.08)
@@ -372,7 +372,7 @@ Panel {
                 color: searchArea.containsMouse ? Style.hoverFillFor(root.foreground, Color.accent) : "transparent"
                 TapHandler { onTapped: root.doSearch(nameField.text) }
                 HoverHandler { id: searchArea; cursorShape: Qt.PointingHandCursor }
-                Text { id: searchBtn; anchors.centerIn: parent; text: "Search"; color: root.foreground; font.pixelSize: Style.font.caption }
+                Text { id: searchBtn; anchors.centerIn: parent; text: "Pesquisar"; color: root.foreground; font.pixelSize: Style.font.caption }
               }
             }
 
@@ -421,7 +421,7 @@ Panel {
                 color: addArea2.containsMouse ? Style.hoverFillFor(root.foreground, Color.accent) : "transparent"
                 TapHandler { onTapped: root.addTeam("espn", root.newTeamSport, teamIdField.text, nameField.text || teamIdField.text) }
                 HoverHandler { id: addArea2; cursorShape: Qt.PointingHandCursor }
-                Text { id: addBtn; anchors.centerIn: parent; text: "Add"; color: root.foreground; font.pixelSize: Style.font.caption }
+                Text { id: addBtn; anchors.centerIn: parent; text: "Adicionar"; color: root.foreground; font.pixelSize: Style.font.caption }
               }
             }
           }
@@ -438,7 +438,7 @@ Panel {
             border.width: 1
             TapHandler { onTapped: Quickshell.execDetached(["xdg-open", root.donateUrl]) }
             HoverHandler { id: donateArea; cursorShape: Qt.PointingHandCursor }
-            Text { id: donateText; anchors.centerIn: parent; text: "♥ Donate via PayPal"; color: root.foreground; font.pixelSize: Style.font.caption }
+            Text { id: donateText; anchors.centerIn: parent; text: "♥ Doar via PayPal"; color: root.foreground; font.pixelSize: Style.font.caption }
           }
         }
       }
