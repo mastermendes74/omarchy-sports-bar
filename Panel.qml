@@ -24,6 +24,26 @@ Panel {
   property string newTeamSport: "basketball/nba"
   property string newTeamName: ""
   property string newTeamId: ""
+  property string selectedSport: ""
+  property string sportFilter: ""
+  property var catalog: ({})
+  readonly property var sportCatalog: [
+    { key: "basketball/nba", icon: "🏀", label: "NBA" },
+    { key: "football/nfl", icon: "🏈", label: "NFL" },
+    { key: "baseball/mlb", icon: "⚾", label: "MLB" },
+    { key: "hockey/nhl", icon: "🏒", label: "NHL" },
+    { key: "basketball/wnba", icon: "🏀", label: "WNBA" },
+    { key: "soccer", icon: "⚽", label: "Football (search)" }
+  ]
+  readonly property var filteredCatalogTeams: {
+    var league = catalog[selectedSport]
+    var teams = league && league.teams ? league.teams : []
+    if (sportFilter !== "") {
+      var f = sportFilter.toLowerCase()
+      teams = teams.filter(function(t){ return t.name.toLowerCase().indexOf(f) !== -1 || t.abbr.toLowerCase().indexOf(f) !== -1 })
+    }
+    return teams
+  }
 
   readonly property string teamsPath: Quickshell.env("HOME") + "/.local/state/omarchy-sports/teams.json"
   readonly property string dataPath: Quickshell.env("HOME") + "/.local/state/omarchy-sports/data.json"
@@ -69,6 +89,14 @@ Panel {
     onLoaded: root.loadTeams()
     onLoadFailed: root.loadTeams()
     onFileChanged: { teamsFile.reload() }
+  }
+  FileView {
+    id: catalogFile
+    path: Quickshell.env("HOME") + "/.local/state/omarchy-sports/catalog.json"
+    watchChanges: false
+    onLoaded: {
+      try { catalog = JSON.parse(catalogFile.text()) } catch (e) { catalog = {} }
+    }
   }
   FileView {
     id: dataFile
@@ -308,71 +336,115 @@ Panel {
             font.pixelSize: Style.font.body
           }
 
-          // -------- form adicionar --------
+          // -------- add team: sports list -> teams with logos --------
           Column {
             visible: root.addingTeam
             spacing: Style.space(8)
             width: parent.width
 
-            Row {
+            // sports list
+            Flow {
+              width: parent.width
               spacing: Style.space(6)
-              Text { text: "Provider:"; color: root.foreground; font.pixelSize: Style.font.caption; anchors.verticalCenter: parent.verticalCenter }
               Repeater {
-                model: ["espn", "thesportsdb", "f1"]
+                model: root.sportCatalog
                 delegate: Rectangle {
-                  required property string modelData
-                  property bool selected: root.newTeamProvider === modelData
-                  width: provText.implicitWidth + Style.space(10); height: Style.space(20)
+                  required property var modelData
+                  property bool selected: root.selectedSport === modelData.key
+                  width: sportRow.implicitWidth + Style.space(12); height: Style.space(24)
                   radius: Math.min(4, Style.cornerRadius)
-                  color: selected ? Style.hoverFillFor(root.foreground, Color.accent) : "transparent"
-                  TapHandler { onTapped: { root.newTeamProvider = modelData; root.searchResults = [] } }
-                  HoverHandler { cursorShape: Qt.PointingHandCursor }
-                  Text { id: provText; anchors.centerIn: parent; text: modelData; color: root.foreground; font.pixelSize: Style.font.caption }
+                  color: selected ? Style.hoverFillFor(root.foreground, Color.accent) : (sportHover.containsMouse ? Style.hoverFillFor(root.foreground, Color.accent) : "transparent")
+                  TapHandler { onTapped: { root.selectedSport = modelData.key; root.sportFilter = "" } }
+                  HoverHandler { id: sportHover; cursorShape: Qt.PointingHandCursor }
+                  Row {
+                    id: sportRow
+                    anchors.centerIn: parent
+                    spacing: Style.space(4)
+                    Text { text: modelData.icon; font.pixelSize: Style.font.body }
+                    Text { text: modelData.label; color: root.foreground; font.pixelSize: Style.font.caption }
+                  }
                 }
               }
             }
 
-            Row {
-              visible: root.newTeamProvider === "espn"
-              spacing: Style.space(6)
-              Text { text: "Sport:"; color: root.foreground; font.pixelSize: Style.font.caption; anchors.verticalCenter: parent.verticalCenter }
-              Rectangle {
-                width: Style.space(240); height: Style.space(22)
-                color: Qt.alpha(root.foreground, 0.08)
-                radius: Math.min(4, Style.cornerRadius)
-                TextInput {
-                  id: sportField
-                  anchors.fill: parent; anchors.margins: 4
-                  color: root.foreground
-                  font.pixelSize: Style.font.caption
-                  text: root.newTeamSport
-                  onTextChanged: root.newTeamSport = text
+            // filter + teams with logos
+            Rectangle {
+              visible: root.selectedSport !== ""
+              width: parent.width; height: Style.space(24)
+              color: Qt.alpha(root.foreground, 0.08)
+              radius: Math.min(4, Style.cornerRadius)
+              TextInput {
+                id: filterField
+                anchors.fill: parent; anchors.margins: 4
+                color: root.foreground
+                font.pixelSize: Style.font.caption
+                text: root.sportFilter
+                onTextChanged: root.sportFilter = text
+              }
+              Text {
+                visible: root.sportFilter === ""
+                anchors.verticalCenter: parent.verticalCenter; anchors.left: parent.left; anchors.leftMargin: 6
+                text: "Filter teams…"; color: Qt.darker(root.foreground, 1.5); font.pixelSize: Style.font.caption
+              }
+            }
+
+            Column {
+              visible: root.selectedSport !== ""
+              spacing: Style.space(4)
+              width: parent.width
+              Repeater {
+                model: root.filteredCatalogTeams
+                delegate: Rectangle {
+                  required property var modelData
+                  width: parent ? parent.width : 300; height: Style.space(26)
+                  radius: Math.min(4, Style.cornerRadius)
+                  color: teamPickArea.containsMouse ? Style.hoverFillFor(root.foreground, Color.accent) : "transparent"
+                  TapHandler { onTapped: root.addTeam("espn", root.selectedSport, modelData.abbr, modelData.name) }
+                  HoverHandler { id: teamPickArea; cursorShape: Qt.PointingHandCursor }
+                  Row {
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: Style.space(8)
+                    Image {
+                      source: modelData.logo
+                      width: Style.space(18); height: Style.space(18)
+                      fillMode: Image.PreserveAspectFit
+                      asynchronous: true
+                    }
+                    Text { text: modelData.name; color: root.foreground; font.pixelSize: Style.font.caption }
+                    Text { text: modelData.abbr; color: Qt.darker(root.foreground, 1.5); font.pixelSize: Style.font.caption }
+                  }
+                  Text {
+                    anchors.right: parent.right; anchors.rightMargin: 6
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: "+"; color: root.foreground; font.pixelSize: Style.font.body
+                  }
                 }
               }
             }
 
+            // soccer search (TheSportsDB)
             Row {
-              visible: root.newTeamProvider !== "f1"
+              visible: root.selectedSport === "soccer"
               spacing: Style.space(6)
-              Text { text: "Name:"; color: root.foreground; font.pixelSize: Style.font.caption; anchors.verticalCenter: parent.verticalCenter }
               Rectangle {
-                width: Style.space(180); height: Style.space(22)
+                width: parent.width - searchBtn2.implicitWidth - Style.space(16); height: Style.space(24)
                 color: Qt.alpha(root.foreground, 0.08)
                 radius: Math.min(4, Style.cornerRadius)
                 TextInput {
-                  id: nameField
+                  id: soccerField
                   anchors.fill: parent; anchors.margins: 4
                   color: root.foreground
                   font.pixelSize: Style.font.caption
                 }
               }
               Rectangle {
-                width: searchBtn.implicitWidth + Style.space(12); height: Style.space(22)
+                id: searchBtn2
+                width: searchTxt2.implicitWidth + Style.space(12); height: Style.space(24)
                 radius: Math.min(4, Style.cornerRadius)
-                color: searchArea.containsMouse ? Style.hoverFillFor(root.foreground, Color.accent) : "transparent"
-                TapHandler { onTapped: root.doSearch(nameField.text) }
-                HoverHandler { id: searchArea; cursorShape: Qt.PointingHandCursor }
-                Text { id: searchBtn; anchors.centerIn: parent; text: "Search"; color: root.foreground; font.pixelSize: Style.font.caption }
+                color: sArea2.containsMouse ? Style.hoverFillFor(root.foreground, Color.accent) : "transparent"
+                TapHandler { onTapped: root.doSearch(soccerField.text) }
+                HoverHandler { id: sArea2; cursorShape: Qt.PointingHandCursor }
+                Text { id: searchTxt2; anchors.centerIn: parent; text: "Search"; color: root.foreground; font.pixelSize: Style.font.caption }
               }
             }
 
@@ -384,9 +456,9 @@ Panel {
                 model: root.searchResults
                 delegate: Rectangle {
                   required property var modelData
-                  width: parent ? parent.width : 200; height: Style.space(20)
+                  width: parent ? parent.width : 300; height: Style.space(22)
                   radius: Math.min(4, Style.cornerRadius)
-                  color: pickArea.containsMouse ? Style.hoverFillFor(root.foreground, Color.accent) : "transparent"
+                  color: pickA2.containsMouse ? Style.hoverFillFor(root.foreground, Color.accent) : "transparent"
                   TapHandler {
                     onTapped: {
                       var parts = modelData.id.split(/\s+/)
@@ -394,34 +466,9 @@ Panel {
                       root.searchResults = []
                     }
                   }
-                  HoverHandler { id: pickArea; cursorShape: Qt.PointingHandCursor }
+                  HoverHandler { id: pickA2; cursorShape: Qt.PointingHandCursor }
                   Text { anchors.verticalCenter: parent.verticalCenter; text: modelData.name; color: root.foreground; font.pixelSize: Style.font.caption }
                 }
-              }
-            }
-
-            Row {
-              visible: root.newTeamProvider === "espn"
-              spacing: Style.space(6)
-              Text { text: "Team abbr:"; color: root.foreground; font.pixelSize: Style.font.caption; anchors.verticalCenter: parent.verticalCenter }
-              Rectangle {
-                width: Style.space(120); height: Style.space(22)
-                color: Qt.alpha(root.foreground, 0.08)
-                radius: Math.min(4, Style.cornerRadius)
-                TextInput {
-                  id: teamIdField
-                  anchors.fill: parent; anchors.margins: 4
-                  color: root.foreground
-                  font.pixelSize: Style.font.caption
-                }
-              }
-              Rectangle {
-                width: addBtn.implicitWidth + Style.space(12); height: Style.space(22)
-                radius: Math.min(4, Style.cornerRadius)
-                color: addArea2.containsMouse ? Style.hoverFillFor(root.foreground, Color.accent) : "transparent"
-                TapHandler { onTapped: root.addTeam("espn", root.newTeamSport, teamIdField.text, nameField.text || teamIdField.text) }
-                HoverHandler { id: addArea2; cursorShape: Qt.PointingHandCursor }
-                Text { id: addBtn; anchors.centerIn: parent; text: "Add"; color: root.foreground; font.pixelSize: Style.font.caption }
               }
             }
           }
