@@ -228,6 +228,33 @@ def load_json(path, default):
 def notify(title, body=""):
     os.system(f'notify-send "{title}" "{body}" 2>/dev/null')
 
+
+def catalog():
+    """Gera catalog.json com todas as equipas ESPN por desporto (NBA, NFL, MLB, NHL, WNBA)."""
+    out = {}
+    sports = [("basketball","nba"),("football","nfl"),("hockey","nhl"),("baseball","mlb"),("basketball","wnba")]
+    for sport, league in sports:
+        key = f"{sport}/{league}"
+        try:
+            d = http_json(f"https://sports.core.api.espn.com/v2/sports/{sport}/leagues/{league}/teams?limit=100")
+            teams = []
+            for it in (d or {}).get('items', []):
+                ref = it.get('$ref','')
+                try:
+                    t = http_json(ref)
+                    logos = t.get('logos') or []
+                    teams.append({"abbr": t.get('abbreviation',''), "name": t.get('displayName',''),
+                                  "id": t.get('id',''), "logo": logos[0].get('href','') if logos else ''})
+                except Exception: pass
+                time.sleep(0.15)
+            out[key] = {"league": league, "teams": teams}
+            print(f"catalog: {key} -> {len(teams)}", flush=True)
+        except Exception as e:
+            print(f"catalog {key}: ERRO {e}", flush=True)
+    path = os.path.join(HOME, "catalog.json")
+    atomic_write(path, out)
+    print(f"catalog.json: {sum(len(v['teams']) for v in out.values())} equipas")
+
 def search(provider, name):
     if provider == "espn":
         # espn team search: usar lista de leagues conhecidas → teams/{abbr}
@@ -244,4 +271,5 @@ if __name__ == "__main__":
     if cmd == "fetch": fetch()
     elif cmd == "tick": tick()
     elif cmd == "search" and len(sys.argv) > 3: search(sys.argv[2], sys.argv[3])
+    elif cmd == "catalog": catalog()
     else: print("uso: fetch | tick | search <provider> <nome>")
