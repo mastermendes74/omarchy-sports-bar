@@ -427,7 +427,7 @@ Panel {
               visible: root.selectedSport === "soccer"
               spacing: Style.space(6)
               Rectangle {
-                width: parent.width - searchBtn2.implicitWidth - Style.space(16); height: Style.space(24)
+                width: parent.width - searchBtn2.width - Style.space(16); height: Style.space(24)
                 color: Qt.alpha(root.foreground, 0.08)
                 radius: Math.min(4, Style.cornerRadius)
                 TextInput {
