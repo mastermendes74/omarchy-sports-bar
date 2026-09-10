@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Controls
 import Quickshell
 import Quickshell.Io
 import qs.Commons
@@ -10,19 +11,29 @@ Panel {
   ipcTarget: "mendestein.sports"
   manageIpc: false
 
+  // ---- estado ----
   property var teams: []
   property var events: []
   property string lastUpdated: ""
   property bool stale: false
   property bool addingTeam: false
-  property string selectedSport: ""
-  property string searchFilter: ""
-  property var catalog: ({})
-  readonly property string catalogPath: Quickshell.env("HOME") + "/.local/state/omarchy-sports/catalog.json"
-  readonly property color foreground: bar ? bar.foreground : Color.foreground
-  readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
-  readonly property color dim: Qt.darker(foreground, 1.55)
+  property bool busy: false
+  property string searchOutput: ""
+  property var searchResults: []
+  property string newTeamProvider: "espn"
+  property string newTeamSport: "basketball/nba"
+  property string newTeamName: ""
+  property string newTeamId: ""
 
+  readonly property string teamsPath: Quickshell.env("HOME") + "/.local/state/omarchy-sports/teams.json"
+  readonly property string dataPath: Quickshell.env("HOME") + "/.local/state/omarchy-sports/data.json"
+  readonly property string workerPath: Quickshell.env("HOME") + "/.config/omarchy/plugins/mendestein.sports/worker/sports_worker.py"
+
+  readonly property color foreground: bar ? bar.foreground : Color.foreground
+  implicitWidth: sportsBtn.implicitWidth
+  implicitHeight: sportsBtn.implicitHeight
+
+  // ---- próximo evento / último resultado ----
   readonly property var nextEvent: {
     var now = new Date()
     var up = events.filter(function(e) {
@@ -38,95 +49,121 @@ Panel {
     fin.sort(function(a,b){ return (b.kickoff_utc||"") > (a.kickoff_utc||"") ? 1 : -1 })
     return fin.length ? fin[0] : null
   }
-  readonly property string barLabel: nextEvent
-      ? ((nextEvent.kickoff_local || "") + " " + (nextEvent.event || "")).substring(0, 30)
-      : ""
+  readonly property real hoursUntil: nextEvent && nextEvent.kickoff_utc
+      ? (new Date(nextEvent.kickoff_utc) - Date.now()) / 3600000 : 9999
+  readonly property string state: stale ? "stale" : (hoursUntil < 24 ? "upcoming" : (lastResult ? "result" : "idle"))
 
+  // ---- PayPal donate ----
   readonly property string donateUrl:
     "https://www.paypal.com/cgi-bin/webscr?cmd=_donations"
     + "&business=mendestein%40outlook.com"
-    + "&item_name=mendestein.sports%20omarchy%20widget"
+    + "&item_name=mendestein.sports%20omarchy%20plugin"
     + "&currency_code=EUR&no_shipping=1"
 
+  // ---- ficheiros ----
   FileView {
     id: teamsFile
-    path: Quickshell.env("HOME") + "/.local/state/omarchy-sports/teams.json"
+    path: root.teamsPath
     watchChanges: true
     atomicWrites: true
     onLoaded: root.loadTeams()
-    onFileChanged: teamsFile.reload()
+    onLoadFailed: root.loadTeams()
+    onFileChanged: { teamsFile.reload() }
   }
   FileView {
     id: dataFile
-    path: Quickshell.env("HOME") + "/.local/state/omarchy-sports/data.json"
+    path: root.dataPath
     watchChanges: true
     onLoaded: root.loadEvents()
     onFileChanged: dataFile.reload()
   }
 
-  FileView {
-    id: catalogFile
-    path: Quickshell.env("HOME") + "/.local/state/omarchy-sports/catalog.json"
-    watchChanges: true
-    onLoaded: root.loadCatalog()
-    onFileChanged: catalogFile.reload()
-  }
-  function loadCatalog() {
-    try { catalog = JSON.parse(catalogFile.text()) || {} } catch (e) { catalog = {} }
-  }
+
+  // ---- funções ----
+  function log(msg) { console.log("sports-widget:", msg) }
   function loadTeams() {
-    try { var d = JSON.parse(teamsFile.text()); teams = (d && d.teams) || [] } catch (e) { teams = [] }
+    try { var d = JSON.parse(teamsFile.text()); teams = (d && d.teams) || [] }
+    catch (e) { teams = [] }
   }
   function loadEvents() {
-    try {
-      var d = JSON.parse(dataFile.text())
-      events = (d && d.events) || []
-      lastUpdated = d.updated || ""
-      stale = lastUpdated ? ((Date.now() - new Date(lastUpdated).getTime())/1000 > 7200) : false
-    } catch (e) { stale = true }
+    try { var d = JSON.parse(dataFile.text()); events = (d && d.events) || []; lastUpdated = d.updated || ""
+      stale = lastUpdated ? ((Date.now() - new Date(lastUpdated).getTime())/1000 > 7200) : false }
+    catch (e) { stale = true }
   }
-  function runFetch() { Quickshell.execDetached(["python3", Quickshell.env("HOME") + "/.config/omarchy/plugins/mendestein.sports/worker/sports_worker.py", "fetch"]) }
   function saveTeams() {
+    busy = true
     Quickshell.execDetached(["bash", "-c",
-      "cat > " + Quickshell.env("HOME") + "/.local/state/omarchy-sports/teams.json << 'EOJSON'\n" +
-      JSON.stringify({teams: teams}, null, 1) + "\nEOJSON\n" +
-      "sleep 2 && python3 " + Quickshell.env("HOME") + "/.config/omarchy/plugins/mendestein.sports/worker/sports_worker.py fetch"])
+      "mkdir -p ~/.local/state/omarchy-sports && cat > " + teamsPath + " << 'EOJSON'\n" +
+      JSON.stringify({teams: teams}, null, 1) + "\nEOJSON\n" + workerPath + " fetch"])
+    // recarregar após o fetch
+    reloadTimer.restart()
   }
-  function addTeamEspn(sport, abbr, name, logo) {
+  Timer {
+    id: reloadTimer
+    interval: 5000
+    onTriggered: { teamsFile.reload(); dataFile.reload(); busy = false }
+  }
+  function removeTeam(index) {
     var t = teams.slice()
-    t.push({provider: "espn", sport: sport, team: abbr, name: name, logo: logo})
+    t.splice(index, 1)
     teams = t
     saveTeams()
   }
-  function removeTeam(index) {
-    var t = teams.slice(); t.splice(index, 1); teams = t; saveTeams()
+  function addTeam(provider, sport, teamId, name) {
+    var t = {provider: provider, name: name}
+    if (provider === "espn") { t.sport = sport; t.team = teamId }
+    else if (provider === "thesportsdb") { t.sport = "soccer"; t.team_id = teamId }
+    else if (provider === "f1") { }
+    teams.push(t)
+    saveTeams()
+  }
+  function doSearch(name) {
+    busy = true
+    Quickshell.execDetached(["bash", "-c", workerPath + " search thesportsdb '" + name.replace(/[\'";]/g, "") + "' > /tmp/sports_search.txt"])
+    searchReadTimer.restart()
+  }
+  Timer {
+    id: searchReadTimer
+    interval: 4000
+    onTriggered: {
+      var lines = []
+      try {
+        var content = ""
+        var xhr = new XMLHttpRequest()
+        xhr.open("GET", "file:///tmp/sports_search.txt", false)
+        xhr.send()
+        lines = xhr.responseText.split("\n").filter(function(l){ return l.trim() !== "" })
+      } catch(e) {}
+      searchResults = lines.map(function(l) {
+        var parts = l.split(/\s+/)
+        return {id: parts[0], name: l}
+      })
+      busy = false
+    }
   }
 
-  IpcHandler {
-    target: "mendestein.sports"
-    function open(): void { root.open() }
-    function close(): void { root.close() }
-    function toggle(): void { root.toggle() }
-    function refresh(): string { runFetch(); return "ok" }
-  }
-
+  // ---- bar icon + popup ----
   BarIconButton {
-    id: button
-    anchors.fill: parent
+    id: sportsBtn
     bar: root.bar
     text: "⚽"
-    tooltipText: root.barLabel || "Sports events"
-    active: state === "upcoming"
+    slotSize: Style.bar.statusSlot
+    tooltipText: "Sports events"
+    active: root.state === "upcoming"
     activeColor: "#4caf50"
     onPressed: function(buttonCode) {
-      if (buttonCode === Qt.RightButton) runFetch()
+      if (buttonCode === Qt.RightButton) root.runFetch()
       else root.toggle()
     }
   }
 
+  function runFetch() {
+    Quickshell.execDetached(["bash", "-c", root.workerPath + " fetch"])
+  }
+
   KeyboardPanel {
     id: panel
-    anchorItem: button
+    anchorItem: sportsBtn
     owner: root
     bar: root.bar
     open: root.opened
@@ -152,10 +189,11 @@ Panel {
           width: parent.width
           spacing: Style.space(12)
 
+          // -------- próximos eventos --------
           Text {
-            text: "⚽ Próximos eventos"
+            text: "⚽ Upcoming events"
             color: root.foreground
-            font.family: root.fontFamily
+            font.family: root.bar.fontFamily
             font.pixelSize: Style.font.body
             font.bold: true
           }
@@ -163,32 +201,34 @@ Panel {
           Repeater {
             model: {
               var now = new Date()
-              var up = events.filter(function(e) {
+              var up = root.events.filter(function(e) {
                 return e.kind === "upcoming" && e.kickoff_utc && new Date(e.kickoff_utc) > now
               })
               up.sort(function(a,b){ return a.kickoff_utc > b.kickoff_utc ? 1 : -1 })
               return up.slice(0, 5)
             }
             delegate: Row {
-              spacing: Style.space(6)
-              Text { text: "⏳"; color: root.dim; font.pixelSize: Style.font.caption }
+              spacing: Style.space(8)
+              Text { text: "⏳"; color: root.foreground; font.pixelSize: Style.font.caption }
               Text {
-                text: (modelData.kickoff_local || "") + " " + (modelData.event || "")
+                text: (modelData.kickoff_local || "") + "  " + (modelData.event || "")
                 color: root.foreground
+                font.family: root.bar.fontFamily
                 font.pixelSize: Style.font.body
               }
             }
           }
 
           Text {
-            visible: events.filter(function(e){ return e.kind === "upcoming" }).length === 0
-            text: "Sem eventos próximos"
-            color: root.dim
+            visible: root.events.filter(function(e){ return e.kind === "upcoming" }).length === 0
+            text: "No upcoming events"
+            color: Qt.darker(root.foreground, 1.4)
             font.pixelSize: Style.font.body
           }
 
+          // -------- resultados --------
           Text {
-            text: "🏁 Últimos resultados"
+            text: "🏁 Latest results"
             color: root.foreground
             font.letterSpacing: 1
             font.pixelSize: Style.font.body
@@ -196,15 +236,15 @@ Panel {
 
           Repeater {
             model: {
-              var fin = events.filter(function(e) {
+              var fin = root.events.filter(function(e) {
                 return e.kind === "finished" && e.home_score !== null && e.home_score !== undefined
               })
               fin.sort(function(a,b){ return (b.kickoff_utc||"") > (a.kickoff_utc||"") ? 1 : -1 })
               return fin.slice(0, 5)
             }
             delegate: Row {
-              spacing: Style.space(6)
-              Text { text: "🏁"; color: root.dim; font.pixelSize: Style.font.caption }
+              spacing: Style.space(8)
+              Text { text: "🏁"; color: root.foreground; font.pixelSize: Style.font.caption }
               Text {
                 text: modelData.home + " " + modelData.home_score + " - " + modelData.away_score + " " + modelData.away
                 color: root.foreground
@@ -215,10 +255,11 @@ Panel {
 
           Rectangle { height: 1; width: parent.width; color: Qt.alpha(root.foreground, 0.15) }
 
+          // -------- favorite teams --------
           Row {
             spacing: Style.space(8)
             Text {
-              text: "⭐ Equipas preferidas"
+              text: "⭐ Favorite teams"
               color: root.foreground
               font.letterSpacing: 1
               font.pixelSize: Style.font.body
@@ -233,125 +274,19 @@ Panel {
             }
           }
 
-          // -------- secção de adição de equipas --------
-          Column {
-            visible: root.addingTeam
-            width: parent.width
-            spacing: Style.space(10)
-
-            Text {
-              text: "Escolhe o desporto:"
-              color: root.dim
-              font.pixelSize: Style.font.caption
-            }
-
-            // lista de desportos com ícones
-            Repeater {
-              model: [
-                {key: "basketball/nba", label: "NBA", icon: "🏀"},
-                {key: "football/nfl", label: "NFL", icon: "🏈"},
-                {key: "baseball/mlb", label: "MLB", icon: "⚾"},
-                {key: "hockey/nhl", label: "NHL", icon: "🏒"},
-                {key: "basketball/wnba", label: "WNBA", icon: "🏀"}
-              ]
-              delegate: Rectangle {
-                required property var modelData
-                width: parent.width; height: Style.space(28)
-                radius: Math.min(6, Style.cornerRadius)
-                color: root.selectedSport === modelData.key ? Style.selectedFillFor(root.foreground, Color.accent) : (hover.hovered ? Style.hoverFillFor(root.foreground, Color.accent) : "transparent")
-                HoverHandler { id: hover; cursorShape: Qt.PointingHandCursor }
-                TapHandler { onTapped: root.selectedSport = modelData.key }
-                Row {
-                  anchors.verticalCenter: parent.verticalCenter
-                  anchors.left: parent.left
-                  anchors.leftMargin: Style.space(10)
-                  spacing: Style.space(10)
-                  Text { text: modelData.icon; font.pixelSize: Style.font.body }
-                  Text { text: modelData.label; color: root.foreground; font.pixelSize: Style.font.body }
-                }
-              }
-            }
-
-            // lista de equipas desse desporto com emblemas + filtro
-            Column {
-              visible: root.selectedSport !== ""
-              width: parent.width
-              spacing: Style.space(4)
-
-              Rectangle {
-                width: parent.width; height: Style.space(24)
-                color: Style.hoverFillFor(root.foreground, Color.accent)
-                radius: Math.min(4, Style.cornerRadius)
-                TextInput {
-                  anchors.fill: parent; anchors.margins: 4
-                  color: root.foreground
-                  font.pixelSize: Style.font.caption
-                  onTextChanged: root.searchFilter = text
-                }
-              }
-
-              Repeater {
-                model: {
-                  var c = (root.catalog || {})[root.selectedSport]
-                  if (!c || !c.teams) return []
-                  var f = root.searchFilter.toLowerCase()
-                  if (!f) return c.teams
-                  return c.teams.filter(function(t) {
-                    return t.name.toLowerCase().indexOf(f) !== -1 || (t.abbr || "").toLowerCase().indexOf(f) !== -1
-                  })
-                }
-                delegate: Row {
-                  required property var modelData
-                  width: parent.width
-                  height: Style.space(30)
-                  spacing: Style.space(10)
-
-                  Image {
-                    width: Style.space(20); height: Style.space(20)
-                    source: modelData.logo || ""
-                    fillMode: Image.PreserveAspectFit
-                    anchors.verticalCenter: parent.verticalCenter
-                  }
-                  Text {
-                    text: modelData.name
-                    color: root.foreground
-                    font.pixelSize: Style.font.body
-                    anchors.verticalCenter: parent.verticalCenter
-                    width: parent.width - Style.space(70)
-                    elide: Text.ElideRight
-                  }
-                  Rectangle {
-                    width: Style.space(20); height: Style.space(20)
-                    radius: Math.min(4, Style.cornerRadius)
-                    color: addHover.containsMouse ? "#4caf50" : "transparent"
-                    anchors.verticalCenter: parent.verticalCenter
-                    TapHandler {
-                      onTapped: root.addTeamEspn(root.selectedSport, modelData.abbr, modelData.name, modelData.logo)
-                    }
-                    HoverHandler { id: addTm; cursorShape: Qt.PointingHandCursor }
-                    Text { anchors.centerIn: parent; text: "+"; color: "#4caf50"; font.pixelSize: Style.font.body }
-                  }
-                }
-              }
-            }
-          }
-
-          Text { visible: false }
-          }
-
           Repeater {
             model: root.teams
             delegate: Row {
               required property var modelData
-              spacing: Style.space(8)
-              Image {
-                width: Style.space(18); height: Style.space(18)
-                source: modelData.logo || ""
-                visible: !!modelData.logo
-                fillMode: Image.PreserveAspectFit
+              required property int index
+              spacing: Style.space(6)
+              Text {
+                text: "•"
+                color: Qt.darker(root.foreground, 1.4)
+                font.pixelSize: Style.font.body
               }
               Text {
-                text: modelData.name
+                text: (modelData.name || modelData.team || modelData.team_id || "?") + "  [" + (modelData.provider || "?") + "]"
                 color: root.foreground
                 font.pixelSize: Style.font.body
               }
@@ -366,8 +301,134 @@ Panel {
             }
           }
 
+          Text {
+            visible: root.teams.length === 0
+            text: "No teams configured — click + to add"
+            color: Qt.darker(root.foreground, 1.4)
+            font.pixelSize: Style.font.body
+          }
+
+          // -------- form adicionar --------
+          Column {
+            visible: root.addingTeam
+            spacing: Style.space(8)
+            width: parent.width
+
+            Row {
+              spacing: Style.space(6)
+              Text { text: "Provider:"; color: root.foreground; font.pixelSize: Style.font.caption; anchors.verticalCenter: parent.verticalCenter }
+              Repeater {
+                model: ["espn", "thesportsdb", "f1"]
+                delegate: Rectangle {
+                  required property string modelData
+                  property bool selected: root.newTeamProvider === modelData
+                  width: provText.implicitWidth + Style.space(10); height: Style.space(20)
+                  radius: Math.min(4, Style.cornerRadius)
+                  color: selected ? Style.hoverFillFor(root.foreground, Color.accent) : "transparent"
+                  TapHandler { onTapped: { root.newTeamProvider = modelData; root.searchResults = [] } }
+                  HoverHandler { cursorShape: Qt.PointingHandCursor }
+                  Text { id: provText; anchors.centerIn: parent; text: modelData; color: root.foreground; font.pixelSize: Style.font.caption }
+                }
+              }
+            }
+
+            Row {
+              visible: root.newTeamProvider === "espn"
+              spacing: Style.space(6)
+              Text { text: "Sport:"; color: root.foreground; font.pixelSize: Style.font.caption; anchors.verticalCenter: parent.verticalCenter }
+              Rectangle {
+                width: Style.space(240); height: Style.space(22)
+                color: Qt.alpha(root.foreground, 0.08)
+                radius: Math.min(4, Style.cornerRadius)
+                TextInput {
+                  id: sportField
+                  anchors.fill: parent; anchors.margins: 4
+                  color: root.foreground
+                  font.pixelSize: Style.font.caption
+                  text: root.newTeamSport
+                  onTextChanged: root.newTeamSport = text
+                }
+              }
+            }
+
+            Row {
+              visible: root.newTeamProvider !== "f1"
+              spacing: Style.space(6)
+              Text { text: "Name:"; color: root.foreground; font.pixelSize: Style.font.caption; anchors.verticalCenter: parent.verticalCenter }
+              Rectangle {
+                width: Style.space(180); height: Style.space(22)
+                color: Qt.alpha(root.foreground, 0.08)
+                radius: Math.min(4, Style.cornerRadius)
+                TextInput {
+                  id: nameField
+                  anchors.fill: parent; anchors.margins: 4
+                  color: root.foreground
+                  font.pixelSize: Style.font.caption
+                }
+              }
+              Rectangle {
+                width: searchBtn.implicitWidth + Style.space(12); height: Style.space(22)
+                radius: Math.min(4, Style.cornerRadius)
+                color: searchArea.containsMouse ? Style.hoverFillFor(root.foreground, Color.accent) : "transparent"
+                TapHandler { onTapped: root.doSearch(nameField.text) }
+                HoverHandler { id: searchArea; cursorShape: Qt.PointingHandCursor }
+                Text { id: searchBtn; anchors.centerIn: parent; text: "Search"; color: root.foreground; font.pixelSize: Style.font.caption }
+              }
+            }
+
+            Column {
+              visible: root.searchResults.length > 0
+              spacing: Style.space(4)
+              width: parent.width
+              Repeater {
+                model: root.searchResults
+                delegate: Rectangle {
+                  required property var modelData
+                  width: parent ? parent.width : 200; height: Style.space(20)
+                  radius: Math.min(4, Style.cornerRadius)
+                  color: pickArea.containsMouse ? Style.hoverFillFor(root.foreground, Color.accent) : "transparent"
+                  TapHandler {
+                    onTapped: {
+                      var parts = modelData.id.split(/\s+/)
+                      root.addTeam("thesportsdb", "soccer", parts[0], modelData.name.replace(parts[0], "").trim())
+                      root.searchResults = []
+                    }
+                  }
+                  HoverHandler { id: pickArea; cursorShape: Qt.PointingHandCursor }
+                  Text { anchors.verticalCenter: parent.verticalCenter; text: modelData.name; color: root.foreground; font.pixelSize: Style.font.caption }
+                }
+              }
+            }
+
+            Row {
+              visible: root.newTeamProvider === "espn"
+              spacing: Style.space(6)
+              Text { text: "Team abbr:"; color: root.foreground; font.pixelSize: Style.font.caption; anchors.verticalCenter: parent.verticalCenter }
+              Rectangle {
+                width: Style.space(120); height: Style.space(22)
+                color: Qt.alpha(root.foreground, 0.08)
+                radius: Math.min(4, Style.cornerRadius)
+                TextInput {
+                  id: teamIdField
+                  anchors.fill: parent; anchors.margins: 4
+                  color: root.foreground
+                  font.pixelSize: Style.font.caption
+                }
+              }
+              Rectangle {
+                width: addBtn.implicitWidth + Style.space(12); height: Style.space(22)
+                radius: Math.min(4, Style.cornerRadius)
+                color: addArea2.containsMouse ? Style.hoverFillFor(root.foreground, Color.accent) : "transparent"
+                TapHandler { onTapped: root.addTeam("espn", root.newTeamSport, teamIdField.text, nameField.text || teamIdField.text) }
+                HoverHandler { id: addArea2; cursorShape: Qt.PointingHandCursor }
+                Text { id: addBtn; anchors.centerIn: parent; text: "Add"; color: root.foreground; font.pixelSize: Style.font.caption }
+              }
+            }
+          }
+
           Rectangle { height: 1; width: parent.width; color: Qt.alpha(root.foreground, 0.2) }
 
+          // -------- donate --------
           Rectangle {
             width: donateText.implicitWidth + Style.space(16)
             height: Style.space(26)
@@ -377,7 +438,7 @@ Panel {
             border.width: 1
             TapHandler { onTapped: Quickshell.execDetached(["xdg-open", root.donateUrl]) }
             HoverHandler { id: donateArea; cursorShape: Qt.PointingHandCursor }
-            Text { id: donateText; anchors.centerIn: parent; text: "♥ Doar via PayPal"; color: root.foreground; font.pixelSize: Style.font.caption }
+            Text { id: donateText; anchors.centerIn: parent; text: "♥ Donate via PayPal"; color: root.foreground; font.pixelSize: Style.font.caption }
           }
         }
       }
