@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "id": "mendestein.sports",
+  "name": "Sports Bar",
+  "version": "0.1.0",
+  "author": "mendestein",
+  "description": "Sports events pill for your favourite teams — upcoming, live status and results (pt-PT)",
+  "kinds": [
+    "service",
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "service": "service/Service.qml",
+    "barWidget": "Panel.qml"
+  },
+  "barWidget": {
+    "displayName": "Sports",
+    "description": "Next and latest results of your favourite teams",
+    "category": "Info",
+    "allowMultiple": false
+  },
+  "keepLoaded": true
+}
