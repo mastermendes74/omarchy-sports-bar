@@ -2,9 +2,9 @@
   "schemaVersion": 1,
   "id": "mendestein.sports",
   "name": "Sports Bar",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "author": "mendestein",
-  "description": "Sports events pill for your favourite teams — upcoming, live status and results (pt-PT)",
+  "description": "Sports events pill for your favourite teams — upcoming, live status and results (football, NBA, NFL, MLB, NHL, WNBA, F1)",
   "kinds": [
     "bar-widget"
   ],
