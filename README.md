@@ -18,7 +18,7 @@ Widget for the Omarchy bar (Quickshell) that shows upcoming events and recent re
 ## 📦 Installation
 
 ```bash
-omarchy plugin add https://github.com/mendestein/omarchy-sports-bar --enable --yes
+omarchy plugin add https://github.com/mastermendes74/omarchy-sports-bar --enable --yes
 ```
 
 The plugin automatically creates `~/.local/state/omarchy-sports/` on first launch. No teams are selected by default; choose your favourite teams in the widget.
