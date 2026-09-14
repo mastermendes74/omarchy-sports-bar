@@ -23,6 +23,13 @@ omarchy plugin add https://github.com/mendestein/omarchy-sports-bar --enable --y
 
 The plugin automatically creates `~/.local/state/omarchy-sports/` on first launch. No teams are selected by default; choose your favourite teams in the widget.
 
+To remove the plugin:
+
+```bash
+omarchy plugin remove mendestein.sports
+rm -rf ~/.local/state/omarchy-sports
+```
+
 ## ⚙️ Configuring your teams
 
 Click the ⚽ icon in the bar to open the popup. Select a sport, then select a country or competition for football, and choose teams from the catalogue:
