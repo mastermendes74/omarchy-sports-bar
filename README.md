@@ -1,85 +1,86 @@
 # Omarchy Sports Bar Widget
 
-Widget para a barra do Omarchy (Quickshell) que mostra os próximos eventos e últimos resultados das tuas equipas preferidas — de qualquer desporto coberto pela ESPN (NBA, NFL, MLB, WNBA, NHL, F1) e pela TheSportsDB (futebol europeu: Liga Portugal, Champions League, Premier League...).
+Widget for the Omarchy bar (Quickshell) that shows upcoming events and recent results for your favourite teams — from sports covered by ESPN (NBA, NFL, MLB, WNBA, NHL, F1) and European football competitions.
 
-## ⚽ Funcionalidades
+## ⚽ Features
 
-- **Próximos eventos** das tuas equipas na barra, ao lado das horas
-- **Notificações antecipadas** 30 minutos antes de cada evento
-- **Resultados** notificados no fim de cada jogo
-- **Configuração de equipas** via popup no widget (qualquer desporto da ESPN)
-- **Ícone dinâmico**: verde quando há jogo <24h, vermelho se o cache expirar
+- **Upcoming events** for your teams in the bar, next to the clock
+- **Early notifications** 30 minutes before each event
+- **Result notifications** when a game ends
+- **Team configuration** through the widget popup
+- **Dynamic icon**: green when a game starts within 24 hours, red when the cache expires
 
-## 🏗️ Requisitos
+## 🏗️ Requirements
 
 - [Omarchy](https://omarchy.org) (shell Quickshell + Hyprland)
-- Python 3.9+ (para o worker)
+- Python 3.9+ (for the worker)
 
-## 📦 Instalação
+## 📦 Installation
 
 ```bash
 omarchy plugin add https://github.com/mendestein/omarchy-sports-bar --enable --yes
 ```
 
-O plugin cria automaticamente `~/.local/state/omarchy-sports/` no primeiro arranque e começa a fazer fetch das equipas por omissão.
+The plugin automatically creates `~/.local/state/omarchy-sports/` on first launch. No teams are selected by default; choose your favourite teams in the widget.
 
-## ⚙️ Configurar as tuas equipas
+## ⚙️ Configuring your teams
 
-Clica no ícone ⚽ na barra (ou no painel) para abrir o popup. Usa o formulário para adicionar equipas:
+Click the ⚽ icon in the bar to open the popup. Select a sport, then select a country or competition for football, and choose teams from the catalogue:
 
 **ESPN (NBA, NFL, MLB, WNBA, NHL, F1...):**
 - Provider: `espn`
-- Sport: um de `basketball/nba`, `football/nfl`, `baseball/mlb`, `hockey/nhl`, `basketball/wnba`
-- Team abbr: abreviatura de 2-3 letras (ex: `lal`, `ne`, `nyy`, `bos`)
-- Nome: como queres ver na barra
+- Sport: one of `basketball/nba`, `football/nfl`, `baseball/mlb`, `hockey/nhl`, `basketball/wnba`
+- Team ID or abbreviation: for example `lal`, `ne`, `nyy`, or `bos`
+- Name: the name shown in the bar
 
-**Futebol europeu (TheSportsDB):**
-- Provider: `thesportsdb`
-- Nome: pesquisa o nome (ex: "Benfica", "Porto") — clica "Pesquisar" e escolhe o resultado
+**European football (ESPN):**
+- Provider: `espn`
+- Sport: a competition such as `soccer/por.1`, `soccer/eng.1`, or `soccer/esp.1`
+- Select a country or competition first, then choose a team from the list
 
 **F1:**
-- Provider: `f1` — mostra o próximo GP e o resultado do último
+- Provider: `f1` — shows the next Grand Prix and the latest result
 
-### Ficheiro directo
+### Direct file configuration
 
-Também podes editar `~/.local/state/omarchy-sports/teams.json`:
+You can also edit `~/.local/state/omarchy-sports/teams.json` directly:
 
 ```json
 {
   "teams": [
     {"provider": "espn", "sport": "basketball/nba", "team": "lal", "name": "LA Lakers"},
-    {"provider": "thesportsdb", "sport": "soccer", "team_id": "134114", "name": "FC Porto"},
-    {"provider": "f1", "name": "Fórmula 1"}
+    {"provider": "espn", "sport": "soccer/por.1", "team": "437", "name": "FC Porto"},
+    {"provider": "f1", "name": "Formula 1"}
   ]
 }
 ```
 
-## 🏗️ Como funciona
+## 🏗️ How it works
 
-- `Panel.qml` — bar widget + popup (UI)
-- `worker/sports_worker.py` — Python stdlib-only: consulta as APIs, escreve cache atómico, envia notificações (notify-send)
-- `~/.local/state/omarchy-sports/data.json` — cache dos eventos (escrito pelo worker, lido pelo widget)
-- `~/.local/state/omarchy-sports/notified.json` — ledger anti-duplicados
+- `Panel.qml` — bar widget and popup UI
+- `worker/sports_worker.py` — stdlib-only Python worker that queries APIs, writes the cache atomically, and sends notifications with `notify-send`
+- `~/.local/state/omarchy-sports/data.json` — event cache written by the worker and read by the widget
+- `~/.local/state/omarchy-sports/notified.json` — notification de-duplication ledger
 
-O worker corre como subprocesso do widget (Quickshell `execDetached`): tick a cada minuto (notificações) e fetch a cada hora (rede).
+The worker runs as a widget subprocess (Quickshell `execDetached`): it checks notifications every minute and fetches network data hourly.
 
-## 🏗️ APIs usadas
+## 🏗️ APIs
 
-| Provider | Desportos | Rate limit free |
+| Provider | Sports | Free-tier rate limit |
 |---|---|---|
-| [TheSportsDB](https://www.thesportsdb.com) | Futebol europeu | 30 req/min |
-| [ESPN](https://site.api.espn.com) | NBA, NFL, MLB, WNBA, NHL, F1 | não-oficial, sem key |
+| [TheSportsDB](https://www.thesportsdb.com) | Team search fallback | 30 req/min |
+| [ESPN](https://site.api.espn.com) | NBA, NFL, MLB, WNBA, NHL, F1, European football | Unofficial, no key required |
 
-## 🩺 Resolução de problemas
+## 🩺 Troubleshooting
 
-- **O widget não aparece na barra**: verifica `omarchy plugin list` (precisa `OMARCHY_PATH=/usr/share/omarchy`).
-- **Dados antigos**: o worker faz fetch a cada hora; força com `python3 ~/.config/omarchy/plugins/mendestein.sports/worker/sports_worker.py fetch`.
-- **Sem notificações**: verifica se `notify-send` funciona no teu Hyprland.
+- **Widget does not appear in the bar**: check `omarchy plugin list`.
+- **Stale data**: the worker fetches hourly; force a refresh with `python3 ~/.config/omarchy/plugins/mendestein.sports/worker/sports_worker.py fetch`.
+- **No notifications**: verify that `notify-send` works in your Hyprland session.
 
-## 💝 Doar
+## 💝 Donate
 
-Se este widget te for útil: [PayPal — mendestein@outlook.com](https://www.paypal.com/donate?business=mendestein@outlook.com)
+If this widget is useful to you: [PayPal — mendestein@outlook.com](https://www.paypal.com/donate?business=mendestein@outlook.com)
 
-## 📄 Licença
+## 📄 License
 
 MIT
